@@ -1,0 +1,62 @@
+#퍼널분석을 할 때는 우리 비즈니스에 맞게 기준을 잡는 2단계, 3단계가 제일 중요하다.
+#전환율이 안 좋은 지점에만 집중하기 보다는 퍼널의 아래 단계인 잡을 수 있는 지점부터 신경쓰는 게 훨씬 더 효과가 좋을 수 있다.
+
+퍼널 분석 전 준비사항1 : 우리 unique한 고객들의 숫자를 알아본다.
+SELECT COUNT(DISTINCT user_id)
+FROM bigquery_practice.practice_simple_funnel
+-- 90400
+퍼널 분석 전 준비사항2 : device의 값이 뭐가 있는지 파악해본다.
+SELECT DISTINCT device
+FROM bigquery_practice.practice_simple_funnel
+-- Mobile, DESKTOP
+
+퍼널 분석 전 준비사항3 : 우리의 퍼널이 어떤 값으로 구성되어 있는지 확인해본다.
+SELECT DISTINCT page
+FROM bigquery_practice.practice_simple_funnel
+ORDER BY page
+-- 1_home_page, 2_search_page, 3_payment_page,4_payment_confirmation_page
+
+SQL을 통해서 각 퍼널마다 몇 명의 사람들이 있는 지 확인한다
+SELECT page, COUNT(user_id) AS user_count, COUNT(DISTINCT user_id) AS check_user_count
+FROM bigquery_practice.practice_simple_funnel
+GROUP BY page
+ORDER BY page
+
+SELECT page,device, COUNT(user_id) AS user_count, COUNT(DISTINCT user_id) AS check_user_count
+FROM bigquery_practice.practice_simple_funnel
+GROUP BY page,device
+ORDER BY page,device
+
+
+구매 데이터로 코호트 메트릭스를 만들어보자
+코호트 기간 기준을 만들어야 한다.
+EX) 월 단위로 고객을 트레킹하자
+코호트라는 그룹으로 만들어 고객을 쭉 트레킹하는 것이다. 
+첫 구매한 걸로 나눠서 월 별로 확인을 해보겠다.
+WITH first_purchase AS(
+SELECT customer_id, DATE(MIN(invoice_date)) AS cohort_day
+From `bigquery_practice.sales`
+Group BY customer_id
+)
+
+SELECT cohort_group, cohort_index, COUNT(DISTINCT customer_id) AS customer_count
+FROM (
+
+SELECT s.*, f.cohort_day, DATE_DIFF(DATE(invoice_date),cohort_day, MONTH) AS cohort_index, DATE_TRUNC (cohort_day,MONTH) AS cohort_group
+FROM bigquery_practice.sales s LEFT JOIN first_purchase f
+ON s.customer_id = f.customer_id
+
+	)
+GROUP BY cohort_group, cohort_index
+
+
+롤링 리텐션 구하기 실습
+SELECT COUNT(customer_id) AS total_customer,
+COUNT(CASE WHEN diff_day>=29 THEN 1 END) AS retention_customer,
+COUNT(CASE WHEN diff_day>=29 THEN 1 END)/ COUNT(customer_id) AS rolling_retention_30
+
+FROM(
+SELECT customer_id, MIN(DATE (invoice_date))AS aas, MAX(DATE (invoice_date)) AS bas,DATE_DIFF(MAX(DATE (invoice_date)), MIN(DATE (invoice_date)),DAY) AS diff_day
+FROM bigquery_practice.sales
+GROUP BY customer_id
+)
